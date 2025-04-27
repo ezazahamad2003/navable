@@ -122,7 +122,7 @@ def record_audio(samplerate=16000, channels=1, chunk=320, silence_duration=3):
         if vad.is_speech(pcm.tobytes(), samplerate):
             silence_count = 0
         else:
-            silence_count += 0.5
+            silence_count += 1
         if silence_count > silence_limit:
             print("⏹ Silence detected. Stopping.")
             break

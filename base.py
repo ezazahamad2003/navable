@@ -1,4 +1,5 @@
 import json
+
 import therapy
 import audio
 import time
@@ -7,16 +8,15 @@ import re # Import re for parse_brightness_or_volume
 import notepad
 import close_active_apps
 import whatsapp
+import news
 import zoom
 import brightness
-# import gemini
+
 import volume
-# import calendar
-# import spotify
-# import web_application
+import google_calendar
+
 import open_file
-# import code
-# import translate
+
 import visualize
 
 
@@ -34,7 +34,8 @@ load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY")) # Ensure client is initialized
 
 # --- History Management ---
-HISTORY_FILE = r"c:\Users\ezaza\Desktop\navable\conversation_history.json"
+# Change this line
+HISTORY_FILE = os.path.join(os.path.dirname(__file__), "conversation_history.json")
 MAX_HISTORY_TURNS = 10 # Keep last 10 pairs for context in get_general_response
 
 def load_history(filepath):
@@ -62,71 +63,149 @@ def save_history(filepath, history):
 def classify_intent_category(user_input):
     """
     Classify the user input into one of the allowed categories.
-
-    Parameters:
-      - user_input: The transcribed user input.
-
-    Returns:
-      The classified category as a string (e.g., "therapy", "notepad", "general").
     """
     prompt = f"""
 You are a classification system.
 Given the user input, determine the primary category of the request.
+Return ONLY the category name, without any explanation or reasoning.
 
 Allowed categories: [
-  "therapy",
-  "notepad",
-  "whatsapp",
-  "meeting",
-  "brightness",
-  "translate",
-  "volume",
-  "visualize",
-  "spotify",
-  "close_active_apps",
-  "calendar",
-  "web-application",
-  "code",
-  "web_application",
-  "retrive-file"
-  "general"
-  "gemini",
+  "therapy", "notepad", "whatsapp", "meeting", "brightness",
+  "translate", "volume", "visualize", "close_active_apps", "news",
+  "google_calendar", "web-application", "retrive-file",
+  "retrive-file", "general"
 ]
 
 Instructions:
-1. Analyze the user's intent.
-2. If the intent clearly relates to therapy or mental well-being, respond with "therapy".
-3. If the intent clearly relates to taking notes or using a notepad, respond with "notepad".
-4. For all other intents, respond with "general".
-5. Respond with ONLY the single category word ("general", "notepad", or "therapy"). No extra text or formatting.
+FIRST CHECK FOR CALENDAR CATEGORY:
+If the input contains ANY of these indicators, return ONLY "google_calendar":
+- Words: calendar, schedule, event, appointment
+- Phrases: add to calendar, create event, schedule event
+- Context: Google Calendar, calendar event, scheduling
+- Time-related: date, time, schedule for
 
-User input:
-{user_input}
+Then check for meeting category:
+FIRST CHECK FOR MEETING CATEGORY:
+If the input contains ANY of these indicators, return ONLY "meeting":
+- Words: meeting, zoom, call, conference, meet, schedule, appointment
+- Phrases: set up, organize, plan, arrange
+- Context: meeting someone, having a call, joining meetings
+- Time-related: calendar, schedule, time, date
 
-Category:
+Only if it's NOT a meeting request, then check other categories:
+- Mental health/emotional support -> "therapy"
+- Note-taking/document creation -> "notepad"
+   - WhatsApp -> "whatsapp"
+   - Screen brightness -> "brightness"
+   - Language translation -> "translate"
+   - Volume control -> "volume"
+   - Data visualization -> "visualize"
+   - Music playback -> "spotify"
+   - Closing apps -> "close_active_apps"
+   - Calendar operations -> "google_calendar"
+   - Web browsing -> "web_application"
+   - Coding tasks -> "code"
+   - File operations -> "retrive-file"
+   - AI chat -> "gemini"
+   - None of above -> "general"
+
+Example meeting inputs (ALL should return ONLY "meeting"):
+- "Can you help me set up a meeting with my friend?"
+- "I want to set up a zoom meeting"
+- "Schedule a call"
+- "Need to meet with someone"
+- "Create a video conference"
+- "Join the zoom call"
+- "Help me organize a meeting"
+
+User Input: {user_input}
+Category (return ONLY the single word category name):
 """
 
     try:
         response = client.chat.completions.create(
-            model="llama3-8b-8192", # Using a smaller, faster Groq model for classification
+            model="deepseek-r1-distill-llama-70b",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=10, # Reduced max_tokens as we expect a single word
-            temperature=0 # Keep temperature low for classification
+            temperature=0.1,
+            max_tokens=10,
+            top_p=0.95,
+            stream=False,
+            reasoning_format="hidden"
         )
-        # Get the raw category string directly
+        
+        # Get the raw category and clean it
         category = response.choices[0].message.content.strip().lower()
+        
+        # Direct keyword matching for common categories
+        user_input_lower = user_input.lower()
+        
+        # Close apps keywords (check before LLM result)
+        if "close" in user_input_lower and any(word in user_input_lower for word in ['app', 'application', 'window']):
+             return "close_active_apps"
+        # Calendar keywords
+        if any(word in user_input_lower for word in ['calendar', 'schedule', 'appointment']):
+            return "google_calendar"
+        # Volume keywords
+        if any(word in user_input_lower for word in ['volume', 'sound', 'audio level']):
+            return "volume"
+        # Brightness keywords
+        if any(word in user_input_lower for word in ['brightness', 'screen', 'dim']):
+            return "brightness"
+        # Meeting keywords
+        if any(word in user_input_lower for word in ['zoom', 'meeting', 'conference']):
+            return "meeting"
+        # File retrieval keywords
+        if any(verb in user_input_lower for verb in ['retrieve', 'open', 'find', 'get']) and \
+           any(noun in user_input_lower for noun in ['file', 'document', 'doc']):
+            return "retrive-file"
+        # Visualize keywords
+        if 'visualize' in user_input_lower or 'plot' in user_input_lower or 'graph' in user_input_lower:
+             return "visualize"
+        # News keywords
+        if 'news' in user_input_lower or 'headlines' in user_input_lower or 'latest events' in user_input_lower:
+             return "news"
+        # --- Add this block for notepad ---
+        if 'notepad' in user_input_lower or 'note' in user_input_lower or 'write down' in user_input_lower:
+             return "notepad"
+        # --- End of added block ---
+        # WhatsApp keywords
+        if 'whatsapp' in user_input_lower or 'send message' in user_input_lower or 'text' in user_input_lower:
+            return "whatsapp"
 
-        # Basic validation to ensure it's one of the expected categories
-        if category not in ["general", "notepad", "therapy"]:
-            print(f"WARN: Unexpected category classification '{category}', defaulting to 'general'.")
-            category = "general" # Default to general if unexpected response
+
+
+        # If no direct matches, use the LLM classification (if it wasn't empty)
+        if category: # Only proceed if LLM gave a non-empty category
+            valid_categories = [
+                "therapy", "notepad", "whatsapp", "meeting", "brightness", # Ensure 'notepad' is here
+                "translate", "volume", "visualize", "spotify", "close_active_apps",
+                "google_calendar", "web-application", "code",
+                "retrive-file", "general", "gemini", "news"
+            ]
+            # Remove duplicates
+            valid_categories = list(dict.fromkeys(valid_categories))
+
+            if category not in valid_categories:
+                print(f"WARN: Unexpected category classification '{category}', defaulting to 'general'.")
+                category = "general"
+        else:
+             # Handle empty LLM response explicitly
+             # Check keywords again here just in case, before defaulting
+             if 'news' in user_input_lower or 'headlines' in user_input_lower:
+                 category = "news"
+             elif 'notepad' in user_input_lower or 'note' in user_input_lower or 'write down' in user_input_lower: # Check notepad keywords
+                 category = "notepad"
+             else:
+                 print(f"WARN: LLM classification returned empty and no keywords matched, defaulting to 'general'.")
+                 category = "general"
+
 
         print(f"DEBUG: classify_intent_category -> {category}")
         return category
 
     except Exception as e:
         print(f"ERROR in classify_intent_category: {e}")
-        return "general" # Default to general in case of error
+        return "general"  # Default to general in case of error
 
 
 def parse_brightness_or_volume(user_input):
@@ -201,7 +280,7 @@ def get_general_response(user_input, history):
 
 
 def main():
-    audio.speak("Hey zaz, how's it going?")
+    audio.speak("Hey, how's it going?")
     # Load history from JSON file at the start
     conversation_history = load_history(HISTORY_FILE)
 
@@ -216,7 +295,7 @@ def main():
         # Append user input to the history list in memory
         conversation_history.append(user_message)
 
-        # 2. Check exit condition
+        # 2. Check exit condition FIRST
         if is_exit_command(user_input):
             response_text = "Exiting the application. Goodbye!"
             audio.speak(response_text)
@@ -224,72 +303,93 @@ def main():
             assistant_message = {"role": "assistant", "content": response_text}
             conversation_history.append(assistant_message)
             save_history(HISTORY_FILE, conversation_history) # Save history before breaking
-            break
+            break # Exit the loop
 
-        # 3. Classify into a category string
-        category = classify_intent_category(user_input) # Call the renamed function
+        # 3. Classify into a category string ONLY IF NOT an exit command
+        category = classify_intent_category(user_input)
 
         print(f"DEBUG: category={category}")
 
         # --- Initialize response_text for logging ---
-        response_text = None # Default to None, will be set by handlers
+        response_text = None
 
         # 4. Route the request based only on the category
         if category == "therapy":
-            # Therapy mode runs independently and does NOT update main history JSON
-            print("INFO: Entering therapy mode. History will not be saved to main log.")
-            therapy.activate_therapy_mode()
+            response_text = "Therapy action initiated." # Set for logging
+            pass # Therapy handles its own flow, no response_text needed here
 
         elif category == "notepad":
-            # Notepad likely doesn't need history context, but we log the interaction
             notepad.open_and_write_notepad()
+            response_text = "Notepad action initiated." # Set for logging
 
         elif category == "whatsapp":
             whatsapp.activate_whatsapp_mode()
+            response_text = "WhatsApp mode activated." # Set for logging
 
-        # --- Add example logging for other categories ---
         elif category == "meeting":
             zoom.zoom_mode()
-            response_text = "Zoom mode activated." # Example response
-            audio.speak(response_text)
+            response_text = "Zoom mode activated." # Set for logging
 
-        # ... handle other categories similarly, setting response_text ...
-        # Example for brightness (assuming adjust_brightness doesn't speak)
+        elif category == "google_calendar":
+            google_calendar.prompt_and_create_calendar_event()
+
+        #elif category == "google_calendar":
+            # create_calendar_event likely gives feedback, set generic log
+          #  google_calendar.create_calendar_event_from_input(user_input)
+           # response_text = "Google Calendar action attempted."
+
+        elif category == "news":
+            # News mode handles its own interaction and speaking
+            response_text = "News mode activated." # For logging purposes
+            news.news_mode() # Call the news mode function
+            response_text = None # News mode handles its own flow, don't save generic message
+
         elif category == "brightness":
-            # Placeholder for action parsing if needed
-            action = "set" # Example action
-            if action in ["increase", "decrease", "set"]:
-                change, set_val = parse_brightness_or_volume(user_input)
-                brightness.adjust_brightness(change, set_val)
-                response_text = f"Brightness adjusted."
+            change, set_val = parse_brightness_or_volume(user_input)
+            brightness.adjust_brightness(change, set_val) # Module handles speaking
+            # Set more descriptive log text
+            if change is not None:
+                response_text = f"Brightness change requested: {change}%"
+            elif set_val is not None:
+                response_text = f"Brightness set requested: {set_val}%"
             else:
-                brightness.adjust_brightness(None, None)
-                response_text = "Brightness adjustment initiated."
-            audio.speak(response_text) # Speak the outcome
+                response_text = "Brightness adjustment attempted (no specific value parsed)."
 
-        # Example for gemini (assuming gemini_mode handles its own speaking)
-        elif category == "gemini":
-             audio.speak("Hey! whats up ?")
-             gemini.gemini_mode()
-             # Gemini mode handles its own interaction, maybe log a generic message
-             response_text = "Gemini mode finished." # Or None if it shouldn't be logged
-        
+        elif category == "close_active_apps":
+             close_active_apps.close_active_apps() # Module handles speaking/feedback
+             response_text = "Attempted to close active applications." # For logging
+
+        elif category =="visualize":
+            visualize.visualize_mod()
+
+        elif category == "retrive-file":
+            open_file.retrive_file()
+
         elif category == "volume":
-            # Similar logic for volume
             mute_toggle = "mute" in user_input or "silent" in user_input
-            if action in ["increase", "decrease", "set"]:
-                change, set_val = parse_brightness_or_volume(user_input)
-                volume.adjust_volume(change, set_val, mute_toggle)
+            change, set_val = parse_brightness_or_volume(user_input)
+            volume.adjust_volume(change, set_val, mute_toggle) # Module handles speaking
+            # Set more descriptive log text
+            if mute_toggle:
+                response_text = "Volume mute toggled."
+            elif change is not None:
+                response_text = f"Volume change requested: {change}%"
+            elif set_val is not None:
+                response_text = f"Volume set requested: {set_val}%"
             else:
-                volume.adjust_volume(None, None, mute_toggle)
-        # --- General Category ---
-        else: # category == "general" or unhandled
+                 response_text = "Volume adjustment attempted (no specific value parsed)."
+
+        # --- Add this else block to handle general category ---
+        else: # Handles "general" or any other unhandled valid category
+            print("INFO: Handling as general query.")
             # Pass the current history (loaded and appended to) to get the response
             response_text = get_general_response(user_input, conversation_history)
-            audio.speak(response_text)
-            # Assistant response for 'general' is handled below
+            audio.speak(response_text) # Speak the general response
+        # --- End of added else block ---
+
 
         # --- Save history ONLY if NOT in therapy mode AND response exists ---
+        # (This part should now correctly save history for 'general' category too)
         if category != "therapy" and response_text is not None:
             assistant_message = {"role": "assistant", "content": response_text}
             conversation_history.append(assistant_message)
@@ -297,6 +397,7 @@ def main():
             # conversation_history = conversation_history[-(MAX_HISTORY_TURNS * 2 + 10):] # Keep slightly more than context window
             save_history(HISTORY_FILE, conversation_history)
         elif category != "therapy" and response_text is None:
+             # This condition might now only be met if a module fails to set response_text
              print(f"INFO: No assistant response generated or logged for category '{category}'. History not saved for this turn.")
 
 

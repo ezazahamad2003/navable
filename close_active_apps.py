@@ -7,7 +7,7 @@ import pygetwindow as gw  # For working with windows
 TARGET_APPLICATIONS = [
     "chrome.exe", "firefox.exe", "msedge.exe", "whatsapp.exe", "spotify.exe",
     "notepad.exe", "word.exe", "excel.exe", "powerpnt.exe",
-    "teams.exe", "zoom.exe", "outlook.exe", "calendar.exe"
+    "teams.exe", "zoom.exe", "outlook.exe", "calendar.exe", "Photos.exe", "explorer.exe"
 ]
 
 EXCLUDED_APPLICATIONS = ["devenv.exe"]  # Visual Studio stays open
