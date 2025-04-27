@@ -43,3 +43,11 @@ credentials.json
 token.json
 zoom_token.json
 # ... potentially other rules ...
+
+# ... existing code ...
+.cache/
+
+# Specific sensitive files in subdirectories
+navable - Copy/credentials.json
+navable - Copy/token.json
+navable - Copy/zoom_token.json
