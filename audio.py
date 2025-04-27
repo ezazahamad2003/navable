@@ -36,46 +36,72 @@ pygame.mixer.init()
 # --- End Deepgram Initialization ---
 
 
-# --- Text-to-Speech Function (Using Deepgram) ---
 def speak(text):
-    """Speak the given text using Deepgram TTS."""
-    print(f"🔊 Speaking via Deepgram TTS: {text}")
-    # Use the globally initialized Deepgram client
-    if not deepgram_client:
-        print("🚨 Deepgram client not initialized. Cannot generate speech.")
-        return
+    """Speak the given text using Groq PlayAI-TTS (MP3 handled properly)."""
+    print(f"🔊 Attempting to speak via Groq PlayAI-TTS: '{text}'")
+    temp_mp3 = None
+    temp_wav = None
 
-    # Define a temporary filename for the speech output
-    temp_filename = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio_file:
-            temp_filename = temp_audio_file.name
-
-        SPEAK_TEXT = {"text": text}
-        # Define TTS options
-        options = SpeakOptions(
-            model="aura-luna-en",  # Specify the Deepgram voice model
+        # Generate speech
+        response = client.audio.speech.create(
+            model="playai-tts",
+            voice="Fritz-PlayAI",
+            input=text,
+            response_format="mp3"
         )
+        print("✅ Groq TTS API call successful.")
 
-        # Call the save method with correct arguments using the global client
-        response = deepgram_client.speak.rest.v("1").save(temp_filename, SPEAK_TEXT, options)
+        # Save MP3 audio temporarily
+        temp_mp3 = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        response.write_to_file(temp_mp3.name)
+        temp_mp3.flush() # Ensure data is written before conversion
+        mp3_path = temp_mp3.name
+        temp_mp3.close() # Close the file handle before conversion/playback
+        print(f"   - MP3 saved to: {mp3_path}")
 
-        # print(response.to_json(indent=4)) # Optional: print detailed response
-        print(f"✅ Speech saved temporarily as {temp_filename}")
+        # Convert MP3 to WAV
+        audio = AudioSegment.from_mp3(mp3_path)
+        temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        wav_path = temp_wav.name
+        audio.export(wav_path, format="wav")
+        temp_wav.close() # Close the file handle before playback
+        print(f"   - WAV converted and saved to: {wav_path}")
 
-        # Play the generated speech file
-        play_mp3(temp_filename)
+        # Play WAV audio using playsound (blocking)
+        print(f"   - Playing audio using playsound: {wav_path}...")
+        playsound(wav_path, block=True) # block=True waits for sound to finish
+        print("   - Audio playback finished (playsound).")
 
     except Exception as e:
-        print(f"🚨 Deepgram TTS Exception: {e}")
+        # Enhanced error logging
+        print(f"❌ Error in speak function: {type(e).__name__} - {e}")
+        print("Traceback:")
+        print(traceback.format_exc())
     finally:
-        # Clean up the temporary file
-        if temp_filename and os.path.exists(temp_filename):
+        # Clean up temp files after playback attempt (or failure)
+        print("   - Cleaning up temporary audio files...")
+        if temp_mp3 and os.path.exists(mp3_path):
             try:
-                os.remove(temp_filename)
-                print(f"🗑️ Temporary speech file {temp_filename} deleted.")
+                os.remove(mp3_path)
+                print(f"   - Temp file {mp3_path} deleted.")
             except Exception as e:
-                print(f"⚠️ Could not delete temporary speech file {temp_filename}: {e}")
+                print(f"⚠️ Error deleting MP3 {mp3_path}: {e}")
+        else:
+            if temp_mp3:
+                print(f"   - Temp MP3 file {mp3_path} not found.")
+
+        if temp_wav and os.path.exists(wav_path):
+            try:
+                os.remove(wav_path)
+                print(f"   - Temp file {wav_path} deleted.")
+            except Exception as e:
+                print(f"⚠️ Error deleting WAV {wav_path}: {e}")
+        else:
+            if temp_wav:
+                 print(f"   - Temp WAV file {wav_path} not found.")
+
+    print("--- Exiting speak function ---") # DEBUG
 
 # --- MP3 Playback Function ---
 def play_mp3(file_path):
