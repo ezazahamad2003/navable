@@ -35,8 +35,11 @@ ENV/
 
 # OS specific files
 .DS_Store
+# ... existing code ...
 Thumbs.db
 
-# Data files (like news articles)
-*.json
-news_data/ # Also ignore the directory if it only contains ignored files
+# Authentication / Token files
+credentials.json
+token.json
+zoom_token.json
+# ... potentially other rules ...
