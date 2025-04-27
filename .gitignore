@@ -36,3 +36,7 @@ ENV/
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# Data files (like news articles)
+*.json
+news_data/ # Also ignore the directory if it only contains ignored files
